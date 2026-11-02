@@ -116,7 +116,11 @@ contract StableFXPool is ERC20, ReentrancyGuard {
 
             liquidity_ = root_ - MINIMUM_LIQUIDITY;
             _mint(DEAD, MINIMUM_LIQUIDITY);
-        } else {}
+        } else {
+            (amount0_, amount1_) = _computeAmounts(amount0Desired_, amount1Desired_, amount0Min_, amount1Min_);
+            liquidity_ = Math.min(amount0_ * totalSupply() / reserve0, amount1_ * totalSupply() / reserve1);
+            if (liquidity_ == 0) revert InsufficientLiquidityMinted();
+        }
 
         reserve0 += amount0_;
         reserve1 += amount1_;
@@ -135,5 +139,21 @@ contract StableFXPool is ERC20, ReentrancyGuard {
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
+    }
+
+    function _computeAmounts(uint256 amount0Desired_, uint256 amount1Desired_, uint256 amount0Min_, uint256 amount1Min_)
+        private
+        view
+        returns (uint256 amount0_, uint256 amount1_)
+    {
+        uint256 amount1Optimal_ = amount0Desired_ * reserve1 / reserve0;
+        if (amount1Optimal_ <= amount1Desired_) {
+            if (amount1Optimal_ < amount1Min_) revert InsufficientAmount(amount1Optimal_, amount1Min_);
+            return (amount0Desired_, amount1Optimal_);
+        }
+
+        uint256 amount0Optimal_ = amount1Desired_ * reserve0 / reserve1;
+        if (amount0Optimal_ < amount0Min_) revert InsufficientAmount(amount0Optimal_, amount0Min_);
+        return (amount0Optimal_, amount1Desired_);
     }
 }

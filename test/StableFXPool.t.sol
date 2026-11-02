@@ -171,6 +171,25 @@ contract StableFXPoolTest is Test {
         assertEq(token1.balanceOf(address(stablePool)), 1_100e6);
     }
 
+    function test_AddLiquidity_UsesOptimalRatioWhenToken0IsInExcess() public {
+        _addLiquidity(user, 4_000e6, 1_000e6);
+
+        uint256 token0Balance_ = token0.balanceOf(user);
+        uint256 token1Balance_ = token1.balanceOf(user);
+
+        uint256 liquidity2_ = _addLiquidity(user, 1_000e6, 100e6);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(token0.balanceOf(user), token0Balance_ - 400e6);
+        assertEq(token1.balanceOf(user), token1Balance_ - 100e6);
+        assertEq(reserve0_, 4_400e6);
+        assertEq(reserve1_, 1_100e6);
+        assertEq(liquidity2_, 200e6);
+        assertEq(stablePool.totalSupply(), 2_200e6);
+        assertEq(token0.balanceOf(address(stablePool)), 4_400e6);
+        assertEq(token1.balanceOf(address(stablePool)), 1_100e6);
+    }
+
     function test_AddLiquidity_ToDifferentOfSender() public {
         address bob = makeAddr("bob");
         uint256 amount0_ = 1_000e6;
@@ -281,6 +300,16 @@ contract StableFXPoolTest is Test {
         vm.expectRevert(StableFXPool.InsufficientLiquidityMinted.selector);
         vm.prank(user);
         stablePool.addLiquidity(amount0_, amount1_, 0, 0, user, block.timestamp);
+    }
+
+    function test_AddLiquidity_RevertWhen_ZeroLiquidOnLaterDeposit() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidityMinted.selector);
+        vm.prank(user);
+        stablePool.addLiquidity(1, 1_000e6, 0, 0, user, block.timestamp);
     }
 
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
