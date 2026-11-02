@@ -5,6 +5,7 @@ pragma solidity 0.8.34;
 import "forge-std/Test.sol";
 import "../src/StableFXPool.sol";
 import "./mocks/MockERC20.sol";
+import "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract StableFXPoolTest is Test {
     StableFXPool stablePool;
@@ -310,6 +311,168 @@ contract StableFXPoolTest is Test {
         vm.expectRevert(StableFXPool.InsufficientLiquidityMinted.selector);
         vm.prank(user);
         stablePool.addLiquidity(1, 1_000e6, 0, 0, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_AllLiquiditytReturnsProportionalAmounts() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.prank(user);
+        (uint256 amount0Removed_, uint256 amount1Removed_) =
+            stablePool.removeLiquidity(liquidity_, 0, 0, user, block.timestamp);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(amount0Removed_, amount0_ - 1_000);
+        assertEq(amount1Removed_, amount1_ - 1_000);
+        assertEq(stablePool.balanceOf(user), 0);
+        assertEq(stablePool.totalSupply(), stablePool.MINIMUM_LIQUIDITY());
+        assertEq(reserve0_, 1_000);
+        assertEq(reserve1_, 1_000);
+        assertEq(token0.balanceOf(user), INITIAL_MINT_TOKEN - 1_000);
+        assertEq(token1.balanceOf(user), INITIAL_MINT_TOKEN - 1_000);
+        assertEq(token0.balanceOf(address(stablePool)), 1_000);
+        assertEq(token1.balanceOf(address(stablePool)), 1_000);
+    }
+
+    function test_RemoveLiquidity_PartialWithNonTrivialRatio() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        uint256 token0Before_ = token0.balanceOf(user);
+        uint256 token1Before_ = token1.balanceOf(user);
+
+        vm.prank(user);
+        (uint256 amount0Removed_, uint256 amount1Removed_) =
+            stablePool.removeLiquidity(1_000e6, 0, 0, user, block.timestamp);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(amount0Removed_, 2_000e6);
+        assertEq(amount1Removed_, 500e6);
+        assertEq(stablePool.totalSupply(), 1_000e6);
+        assertEq(stablePool.balanceOf(user), liquidity_ - 1_000e6);
+        assertEq(reserve0_, 2_000e6);
+        assertEq(reserve1_, 500e6);
+        assertEq(token0.balanceOf(user), token0Before_ + amount0Removed_);
+        assertEq(token1.balanceOf(user), token1Before_ + amount1Removed_);
+        assertEq(token0.balanceOf(address(stablePool)), 2_000e6);
+        assertEq(token1.balanceOf(address(stablePool)), 500e6);
+    }
+
+    function test_RemoveLiquidity_SendsTokensToRecipient() public {
+        address bob = makeAddr("bob");
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        uint256 token0Before_ = token0.balanceOf(user);
+        uint256 token1Before_ = token1.balanceOf(user);
+
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_, 0, 0, bob, block.timestamp);
+
+        assertEq(token0.balanceOf(bob), amount0_ - 1_000);
+        assertEq(token1.balanceOf(bob), amount1_ - 1_000);
+        assertEq(token0.balanceOf(user), token0Before_);
+        assertEq(token1.balanceOf(user), token1Before_);
+        assertEq(stablePool.balanceOf(user), 0);
+        assertEq(stablePool.balanceOf(bob), 0);
+    }
+
+    function test_RemoveLiquidity_EmitsLiquidityRemoved() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectEmit(true, true, false, true, address(stablePool));
+        emit LiquidityRemoved(user, user, amount0_ - 1_000, amount1_ - 1_000, liquidity_);
+
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_, 0, 0, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_Expired() public {
+        vm.warp(1_000);
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.Expired.selector);
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_, 0, 0, user, block.timestamp - 1);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_InvalidRecipientWithZeroAddress() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.InvalidRecipient.selector);
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_, 0, 0, address(0), block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_InvalidRecipientWithStableFxPoolAddress() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.InvalidRecipient.selector);
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_, 0, 0, address(stablePool), block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_ZeroLiquidity() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.ZeroAmount.selector);
+        vm.prank(user);
+        stablePool.removeLiquidity(0, 0, 0, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_BelowMinOnToken0() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(abi.encodeWithSelector(StableFXPool.InsufficientAmount.selector, 2_000e6, 2_500e6));
+        vm.prank(user);
+        stablePool.removeLiquidity(1_000e6, 2_500e6, 0, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_BelowMinOnToken1() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(abi.encodeWithSelector(StableFXPool.InsufficientAmount.selector, 500e6, 600e6));
+        vm.prank(user);
+        stablePool.removeLiquidity(1_000e6, 0, 600e6, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_InsufficientLpBalance() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        uint256 liquidity_ = _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, user, liquidity_, liquidity_ + 1)
+        );
+        vm.prank(user);
+        stablePool.removeLiquidity(liquidity_ + 1, 0, 0, user, block.timestamp);
+    }
+
+    function test_RemoveLiquidity_RevertWhen_AmountsRoundToZero() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidityBurned.selector);
+        vm.prank(user);
+        stablePool.removeLiquidity(1, 0, 0, user, block.timestamp);
     }
 
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)

@@ -82,6 +82,11 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     error InsufficientLiquidityMinted();
 
     /**
+     * @dev Thrown when a deposit would burn no LP tokens to the recipient
+     */
+    error InsufficientLiquidityBurned();
+
+    /**
      * @notice Creates a pool for the pair (`token0`, `token1`) and its LP token
      * @param token0_ address of the first token of the pair
      * @param token1_ address of the second token of the pair
