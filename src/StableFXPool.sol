@@ -137,10 +137,33 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit LiquidityAdded(msg.sender, to_, amount0_, amount1_, liquidity_);
     }
 
-    function removeLiquidity(uint256 liquidity, uint256 amount0Min, uint256 amount1Min, address to, uint256 deadline)
-        external
-        returns (uint256 amount0, uint256 amount1)
-    {}
+    function removeLiquidity(
+        uint256 liquidity_,
+        uint256 amount0Min_,
+        uint256 amount1Min_,
+        address to_,
+        uint256 deadline_
+    ) external nonReentrant returns (uint256 amount0_, uint256 amount1_) {
+        if (deadline_ < block.timestamp) revert Expired();
+        if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
+        if (liquidity_ == 0) revert ZeroAmount();
+
+        amount0_ = liquidity_ * reserve0 / totalSupply();
+        amount1_ = liquidity_ * reserve1 / totalSupply();
+
+        if (amount0_ == 0 || amount1_ == 0) revert InsufficientLiquidityBurned();
+        if (amount0_ < amount0Min_) revert InsufficientAmount(amount0_, amount0Min_);
+        if (amount1_ < amount1Min_) revert InsufficientAmount(amount1_, amount1Min_);
+
+        _burn(msg.sender, liquidity_);
+        reserve0 -= amount0_;
+        reserve1 -= amount1_;
+
+        token0.safeTransfer(to_, amount0_);
+        token1.safeTransfer(to_, amount1_);
+
+        emit LiquidityRemoved(msg.sender, to_, amount0_, amount1_, liquidity_);
+    }
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
