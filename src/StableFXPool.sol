@@ -4,13 +4,18 @@ pragma solidity 0.8.34;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @notice  Constant-product (x*y=k) pool for a single, fixed pair of tokens. Designes for EUR/USD stablecoin pyments (USDC/EURC)
  * @dev The pool works in raw token units, so it doesn't depend on the tokens' decimals. It does not sort the tokens : `token0` and `token1` are the order
  *      the deployer chose. The pool custodies the reserves so it inherits the risks of the tokens.
  */
-contract StableFXPool is ERC20 {
+contract StableFXPool is ERC20, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     IERC20 public immutable token0;
     IERC20 public immutable token1;
 
@@ -91,13 +96,37 @@ contract StableFXPool is ERC20 {
     }
 
     function addLiquidity(
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amount0, uint256 amount1, uint256 liquidity) {}
+        uint256 amount0Desired_,
+        uint256 amount1Desired_,
+        uint256 amount0Min_,
+        uint256 amount1Min_,
+        address to_,
+        uint256 deadline_
+    ) external nonReentrant returns (uint256 amount0_, uint256 amount1_, uint256 liquidity_) {
+        if (deadline_ < block.timestamp) revert Expired();
+        if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
+        if (amount0Desired_ == 0 || amount1Desired_ == 0) revert ZeroAmount();
+
+        if (totalSupply() == 0) {
+            amount0_ = amount0Desired_;
+            amount1_ = amount1Desired_;
+
+            uint256 root_ = Math.sqrt(amount0_ * amount1_);
+            if (root_ <= MINIMUM_LIQUIDITY) revert InsufficientLiquidityMinted();
+
+            liquidity_ = root_ - MINIMUM_LIQUIDITY;
+            _mint(DEAD, MINIMUM_LIQUIDITY);
+        } else {}
+
+        reserve0 += amount0_;
+        reserve1 += amount1_;
+        _mint(to_, liquidity_);
+
+        token0.safeTransferFrom(msg.sender, address(this), amount0_);
+        token1.safeTransferFrom(msg.sender, address(this), amount1_);
+
+        emit LiquidityAdded(msg.sender, to_, amount0_, amount1_, liquidity_);
+    }
 
     function removeLiquidity(uint256 liquidity, uint256 amount0Min, uint256 amount1Min, address to, uint256 deadline)
         external
