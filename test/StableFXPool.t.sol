@@ -475,6 +475,89 @@ contract StableFXPoolTest is Test {
         stablePool.removeLiquidity(1, 0, 0, user, block.timestamp);
     }
 
+    function test_GetAmountOut_MatchesFormula() public {
+        uint256 amount0_ = 2_000e6;
+        uint256 amount1_ = 2_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountIn_ = 1_000e6;
+        address tokenIn_ = address(token0);
+
+        uint256 amountOut_ = stablePool.getAmountOut(tokenIn_, amountIn_);
+        assertEq(amountOut_, 666_444_407);
+    }
+
+    function test_GetAmountOut_NonTrivialRatio() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountIn_ = 1_000e6;
+        address tokenIn_ = address(token0);
+
+        uint256 amountOut_ = stablePool.getAmountOut(tokenIn_, amountIn_);
+        assertEq(amountOut_, 199_919_991);
+    }
+
+    function test_GetAmountOut_WorksWithDifferentDecimals() public {
+        MockERC20 usdc_ = new MockERC20("Mock USDC", "USDC", 6);
+        MockERC20 dai_ = new MockERC20("Mock DAI", "DAI", 18);
+        StableFXPool pool_ = new StableFXPool(address(usdc_), address(dai_));
+        uint256 amountUsdc_ = 1_000e6;
+        uint256 amountDai_ = 1_000e18;
+
+        usdc_.mint(user, amountUsdc_);
+        dai_.mint(user, amountDai_);
+
+        vm.startPrank(user);
+
+        usdc_.approve(address(pool_), amountUsdc_);
+        dai_.approve(address(pool_), amountDai_);
+        pool_.addLiquidity(amountUsdc_, amountDai_, 0, 0, user, block.timestamp);
+
+        vm.stopPrank();
+
+        uint256 amountOut_ = pool_.getAmountOut(address(usdc_), 100e6);
+        assertEq(amountOut_, 90_867_766_716_668_939_497);
+    }
+
+    function test_GetAmountOut_Token1ForToken0() public {
+        _addLiquidity(user, 4_000e6, 1_000e6);
+
+        uint256 amountOut_ = stablePool.getAmountOut(address(token1), 100e6);
+
+        assertEq(amountOut_, 363_471_066);
+    }
+
+    function test_GetAmountOut_RevertWhen_TokenIsNotPoolToken() public {
+        address tokenIn_ = makeAddr("DAI");
+        uint256 amountIn_ = 1_000e6;
+
+        vm.expectRevert(StableFXPool.InvalidToken.selector);
+        stablePool.getAmountOut(tokenIn_, amountIn_);
+    }
+
+    function test_GetAmountOut_RevertWhen_ZeroAmountIn() public {
+        uint256 amountIn_ = 0;
+
+        vm.expectRevert(StableFXPool.ZeroAmount.selector);
+        stablePool.getAmountOut(address(token1), amountIn_);
+    }
+
+    function test_GetAmountOut_RevertWhen_PoolHasNoLiquidity() public {
+        uint256 amountIn_ = 1_000e6;
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidity.selector);
+        stablePool.getAmountOut(address(token0), amountIn_);
+    }
+
+    function test_GetAmountOut_RevertWhen_OutputRoundsToZero() public {
+        _addLiquidity(user, 1_000e6, 1_000e6);
+
+        vm.expectRevert(StableFXPool.InsufficientOutputAmount.selector);
+        stablePool.getAmountOut(address(token0), 1);
+    }
+
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)

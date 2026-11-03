@@ -23,6 +23,8 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     uint256 public reserve1;
 
     uint256 public constant MINIMUM_LIQUIDITY = 1_000;
+    uint256 public constant FEE_BPS = 5;
+    uint256 public constant BPS = 10_000;
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     /**
@@ -85,6 +87,21 @@ contract StableFXPool is ERC20, ReentrancyGuard {
      * @dev Thrown when a deposit would burn no LP tokens to the recipient
      */
     error InsufficientLiquidityBurned();
+
+    /**
+     * @dev Thrown when the token is not one of the 2 tokens of the pool
+     */
+    error InvalidToken();
+
+    /**
+     * @dev Thrown when the pool has no reserves to swap against
+     */
+    error InsufficientLiquidity();
+
+    /**
+     * @dev Thrown when a swap would output zero tokens
+     */
+    error InsufficientOutputAmount();
 
     /**
      * @notice Creates a pool for the pair (`token0`, `token1`) and its LP token
@@ -165,6 +182,14 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit LiquidityRemoved(msg.sender, to_, amount0_, amount1_, liquidity_);
     }
 
+    function getAmountOut(address tokenIn_, uint256 amountIn_) external view returns (uint256 amountOut_) {}
+
+    function swapExactInput(address tokenIn_, uint256 amountIn_, uint256 amountOutMin_, address to_, uint256 deadline_)
+        external
+        nonReentrant
+        returns (uint256 amountOut_)
+    {}
+
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
     }
@@ -184,4 +209,10 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         if (amount0Optimal_ < amount0Min_) revert InsufficientAmount(amount0Optimal_, amount0Min_);
         return (amount0Optimal_, amount1Desired_);
     }
+
+    function _getAmountOut(uint256 amountIn_, uint256 reserveIn_, uint256 reserveOut_)
+        private
+        pure
+        returns (uint256 amountOut_)
+    {}
 }
