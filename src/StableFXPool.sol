@@ -125,6 +125,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         address to_,
         uint256 deadline_
     ) external nonReentrant returns (uint256 amount0_, uint256 amount1_, uint256 liquidity_) {
+        // forge-lint: disable-next-line(block.timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
         if (amount0Desired_ == 0 || amount1Desired_ == 0) revert ZeroAmount();
@@ -161,6 +162,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         address to_,
         uint256 deadline_
     ) external nonReentrant returns (uint256 amount0_, uint256 amount1_) {
+        // forge-lint: disable-next-line(block.timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
         if (liquidity_ == 0) revert ZeroAmount();
