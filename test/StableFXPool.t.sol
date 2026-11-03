@@ -637,7 +637,7 @@ contract StableFXPoolTest is Test {
         uint256 amountIn_ = 100e6;
         pool_.addLiquidity(amountUsdc_ - amountIn_, amountDai_, 0, 0, user, block.timestamp);
 
-        uint256 amountOut_ = pool_.swapExactInput(address(token0), amountIn_, 0, user, block.timestamp);
+        uint256 amountOut_ = pool_.swapExactInput(address(usdc_), amountIn_, 0, user, block.timestamp);
         assertEq(amountOut_, 90_867_766_716_668_939_497);
 
         vm.stopPrank();
@@ -671,7 +671,7 @@ contract StableFXPoolTest is Test {
         uint256 amountIn_ = 100e6;
 
         vm.expectEmit(true, true, false, true, address(stablePool));
-        emit StableFXPool.SwapTokens(user, user, address(0), amountIn_, 90_867_766);
+        emit StableFXPool.SwapTokens(user, user, address(token0), amountIn_, 90_867_766);
 
         vm.prank(user);
         stablePool.swapExactInput(address(token0), amountIn_, 0, user, block.timestamp);

@@ -130,7 +130,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         address to_,
         uint256 deadline_
     ) external nonReentrant returns (uint256 amount0_, uint256 amount1_, uint256 liquidity_) {
-        // forge-lint: disable-next-line(block.timestamp)
+        // forge-lint: disable-next-line(block-timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
         if (amount0Desired_ == 0 || amount1Desired_ == 0) revert ZeroAmount();
@@ -167,7 +167,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         address to_,
         uint256 deadline_
     ) external nonReentrant returns (uint256 amount0_, uint256 amount1_) {
-        // forge-lint: disable-next-line(block.timestamp)
+        // forge-lint: disable-next-line(block-timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
         if (liquidity_ == 0) revert ZeroAmount();
@@ -190,29 +190,34 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     }
 
     function getAmountOut(address tokenIn_, uint256 amountIn_) external view returns (uint256 amountOut_) {
-        if (amountIn_ == 0) revert ZeroAmount();
-
-        uint256 reserveIn_;
-        uint256 reserveOut_;
-
-        if (tokenIn_ == address(token0)) {
-            (reserveIn_, reserveOut_) = (reserve0, reserve1);
-        } else if (tokenIn_ == address(token1)) {
-            (reserveIn_, reserveOut_) = (reserve1, reserve0);
-        } else {
-            revert InvalidToken();
-        }
-
-        if (reserveIn_ == 0 || reserveOut_ == 0) revert InsufficientLiquidity();
-
-        amountOut_ = _getAmountOut(amountIn_, reserveIn_, reserveOut_);
+        (amountOut_,) = _quote(tokenIn_, amountIn_);
     }
 
     function swapExactInput(address tokenIn_, uint256 amountIn_, uint256 amountOutMin_, address to_, uint256 deadline_)
         external
         nonReentrant
         returns (uint256 amountOut_)
-    {}
+    {
+        // forge-lint: disable-next-line(block-timestamp)
+        if (deadline_ < block.timestamp) revert Expired();
+        if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
+        bool zeroForOne_;
+        (amountOut_, zeroForOne_) = _quote(tokenIn_, amountIn_);
+        if (amountOut_ < amountOutMin_) revert InsufficientAmount(amountOut_, amountOutMin_);
+
+        if (zeroForOne_) {
+            reserve0 += amountIn_;
+            reserve1 -= amountOut_;
+        } else {
+            reserve0 -= amountOut_;
+            reserve1 += amountIn_;
+        }
+        (IERC20 tokenIn, IERC20 tokenOut) = zeroForOne_ ? (token0, token1) : (token1, token0);
+        tokenIn.safeTransferFrom(msg.sender, address(this), amountIn_);
+        tokenOut.safeTransfer(to_, amountOut_);
+
+        emit SwapTokens(msg.sender, to_, tokenIn_, amountIn_, amountOut_);
+    }
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
@@ -242,5 +247,25 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         uint256 amountInWithFee_ = amountIn_ * (BPS - FEE_BPS);
         amountOut_ = amountInWithFee_ * reserveOut_ / (reserveIn_ * BPS + amountInWithFee_);
         if (amountOut_ == 0) revert InsufficientOutputAmount();
+    }
+
+    function _quote(address tokenIn_, uint256 amountIn_) private view returns (uint256 amountOut_, bool zeroForOne_) {
+        if (amountIn_ == 0) revert ZeroAmount();
+
+        uint256 reserveIn_;
+        uint256 reserveOut_;
+
+        if (tokenIn_ == address(token0)) {
+            (reserveIn_, reserveOut_) = (reserve0, reserve1);
+        } else if (tokenIn_ == address(token1)) {
+            (reserveIn_, reserveOut_) = (reserve1, reserve0);
+        } else {
+            revert InvalidToken();
+        }
+
+        if (reserveIn_ == 0 || reserveOut_ == 0) revert InsufficientLiquidity();
+
+        amountOut_ = _getAmountOut(amountIn_, reserveIn_, reserveOut_);
+        zeroForOne_ = tokenIn_ == address(token0);
     }
 }
