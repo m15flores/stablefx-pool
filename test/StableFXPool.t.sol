@@ -765,6 +765,120 @@ contract StableFXPoolTest is Test {
         stablePool.swapExactInput(address(token0), amountIn_, 0, user, block.timestamp);
     }
 
+    function testFuzz_Swap_KNeverDecreases(uint256 reserve0_, uint256 reserve1_, uint256 amountIn_, bool zeroForOne_)
+        public
+    {
+        reserve0_ = bound(reserve0_, 1_000e6, 1_000_000e6);
+        reserve1_ = bound(reserve1_, 1_000e6, 1_000_000e6);
+        _addLiquidity(user, reserve0_, reserve1_);
+
+        (uint256 reserveIn_, uint256 reserveOut_) = zeroForOne_ ? (reserve0_, reserve1_) : (reserve1_, reserve0_);
+        amountIn_ = bound(amountIn_, reserveIn_ / reserveOut_ + 2, 10 * reserveIn_);
+        MockERC20 tokenInContract_ = zeroForOne_ ? token0 : token1;
+        tokenInContract_.mint(user, amountIn_);
+
+        vm.startPrank(user);
+
+        tokenInContract_.approve(address(stablePool), amountIn_);
+        (uint256 reserve0Before_, uint256 reserve1Before_) = stablePool.getReserves();
+        uint256 kBefore_ = reserve0Before_ * reserve1Before_;
+        stablePool.swapExactInput(address(tokenInContract_), amountIn_, 0, user, block.timestamp);
+        (uint256 reserve0After_, uint256 reserve1After_) = stablePool.getReserves();
+        uint256 kAfter_ = reserve0After_ * reserve1After_;
+
+        assertGe(kAfter_, kBefore_);
+
+        vm.stopPrank();
+    }
+
+    function testFuzz_Swap_RoundTripReturnsLessThanInput(
+        uint256 reserve0_,
+        uint256 reserve1_,
+        uint256 amountIn_,
+        bool zeroForOne_
+    ) public {
+        reserve0_ = bound(reserve0_, 1_000e6, 1_000_000e6);
+        reserve1_ = bound(reserve1_, 1_000e6, 1_000_000e6);
+        _addLiquidity(user, reserve0_, reserve1_);
+
+        (uint256 reserveIn_, uint256 reserveOut_) = zeroForOne_ ? (reserve0_, reserve1_) : (reserve1_, reserve0_);
+        amountIn_ = bound(amountIn_, reserveIn_ / reserveOut_ + 3, 10 * reserveIn_);
+        (MockERC20 tokenInContract_, MockERC20 tokenOutContract_) = zeroForOne_ ? (token0, token1) : (token1, token0);
+        tokenInContract_.mint(user, amountIn_);
+
+        vm.startPrank(user);
+
+        tokenInContract_.approve(address(stablePool), amountIn_);
+
+        uint256 amountOutFirst_ =
+            stablePool.swapExactInput(address(tokenInContract_), amountIn_, 0, user, block.timestamp);
+        tokenOutContract_.approve(address(stablePool), amountOutFirst_);
+        uint256 amountOutSecond_ =
+            stablePool.swapExactInput(address(tokenOutContract_), amountOutFirst_, 0, user, block.timestamp);
+
+        assertGt(amountIn_, amountOutSecond_);
+
+        vm.stopPrank();
+    }
+
+    function testFuzz_Liquidity_AddThenRemoveNeverProfits(
+        uint256 reserve0First_,
+        uint256 reserve1First_,
+        uint256 amount0Second_,
+        uint256 amount1Second_
+    ) public {
+        reserve0First_ = bound(reserve0First_, 1_000e6, 1_000_000e6);
+        reserve1First_ = bound(reserve1First_, 1_000e6, 1_000_000e6);
+        _addLiquidity(user, reserve0First_, reserve1First_);
+
+        amount0Second_ = bound(amount0Second_, 1_000e6, 1_000_000e6);
+        amount1Second_ = bound(amount1Second_, 1_000e6, 1_000_000e6);
+        token0.mint(user, amount0Second_);
+        token1.mint(user, amount1Second_);
+
+        vm.startPrank(user);
+        token0.approve(address(stablePool), amount0Second_);
+        token1.approve(address(stablePool), amount1Second_);
+
+        (uint256 amount0Added_, uint256 amount1Added_, uint256 liquidity_) =
+            stablePool.addLiquidity(amount0Second_, amount1Second_, 0, 0, user, block.timestamp);
+        (uint256 amount0Removed_, uint256 amount1Removed_) =
+            stablePool.removeLiquidity(liquidity_, 0, 0, user, block.timestamp);
+
+        assertLe(amount0Removed_, amount0Added_);
+        assertLe(amount1Removed_, amount1Added_);
+
+        vm.stopPrank();
+    }
+
+    function testFuzz_Swap_QuoteMatchesSwap(uint256 reserve0_, uint256 reserve1_, uint256 amountIn_, bool zeroForOne_)
+        public
+    {
+        reserve0_ = bound(reserve0_, 1_000e6, 1_000_000e6);
+        reserve1_ = bound(reserve1_, 1_000e6, 1_000_000e6);
+        _addLiquidity(user, reserve0_, reserve1_);
+
+        (uint256 reserveIn_, uint256 reserveOut_) = zeroForOne_ ? (reserve0_, reserve1_) : (reserve1_, reserve0_);
+        amountIn_ = bound(amountIn_, reserveIn_ / reserveOut_ + 2, 10 * reserveIn_);
+        (MockERC20 tokenInContract_, MockERC20 tokenOutContract_) = zeroForOne_ ? (token0, token1) : (token1, token0);
+        tokenInContract_.mint(user, amountIn_);
+
+        address randomRecipient = makeAddr("randomRecipient");
+
+        vm.startPrank(user);
+
+        tokenInContract_.approve(address(stablePool), amountIn_);
+        uint256 quoted_ = stablePool.getAmountOut(address(tokenInContract_), amountIn_);
+        uint256 swapped_ =
+            stablePool.swapExactInput(address(tokenInContract_), amountIn_, 0, randomRecipient, block.timestamp);
+
+        assertEq(swapped_, quoted_);
+        assertEq(tokenOutContract_.balanceOf(randomRecipient), swapped_);
+        assertEq(tokenInContract_.balanceOf(randomRecipient), 0);
+
+        vm.stopPrank();
+    }
+
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)
