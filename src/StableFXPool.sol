@@ -184,7 +184,24 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit LiquidityRemoved(msg.sender, to_, amount0_, amount1_, liquidity_);
     }
 
-    function getAmountOut(address tokenIn_, uint256 amountIn_) external view returns (uint256 amountOut_) {}
+    function getAmountOut(address tokenIn_, uint256 amountIn_) external view returns (uint256 amountOut_) {
+        if (amountIn_ == 0) revert ZeroAmount();
+
+        uint256 reserveIn_;
+        uint256 reserveOut_;
+
+        if (tokenIn_ == address(token0)) {
+            (reserveIn_, reserveOut_) = (reserve0, reserve1);
+        } else if (tokenIn_ == address(token1)) {
+            (reserveIn_, reserveOut_) = (reserve1, reserve0);
+        } else {
+            revert InvalidToken();
+        }
+
+        if (reserveIn_ == 0 || reserveOut_ == 0) revert InsufficientLiquidity();
+
+        amountOut_ = _getAmountOut(amountIn_, reserveIn_, reserveOut_);
+    }
 
     function swapExactInput(address tokenIn_, uint256 amountIn_, uint256 amountOutMin_, address to_, uint256 deadline_)
         external
@@ -216,5 +233,9 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         private
         pure
         returns (uint256 amountOut_)
-    {}
+    {
+        uint256 amountInWithFee_ = amountIn_ * (BPS - FEE_BPS);
+        amountOut_ = amountInWithFee_ * reserveOut_ / (reserveIn_ * BPS + amountInWithFee_);
+        if (amountOut_ == 0) revert InsufficientOutputAmount();
+    }
 }
