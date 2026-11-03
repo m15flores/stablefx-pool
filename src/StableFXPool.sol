@@ -42,6 +42,11 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     );
 
     /**
+     * @dev Emitted when a swap is executed
+     */
+    event SwapTokens(address indexed sender, address indexed to, address tokenIn, uint256 amountIn, uint256 amountOut);
+
+    /**
      * @dev Thrown when a token address is the zero address
      */
     error ZeroAddress();
