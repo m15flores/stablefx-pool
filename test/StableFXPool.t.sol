@@ -1215,8 +1215,6 @@ contract StableFXPoolTest is Test {
         assertEq(balanceAfter_, balanceBefore_ + amountOut_);
     }
 
-    function testFuzz_ExactOutputThenExactInput_consistent() public {}
-
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)

@@ -7,20 +7,23 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
+import "./interfaces/IStableFXPool.sol";
 
 /**
- * @notice  Constant-product (x*y=k) pool for a single, fixed pair of tokens. Designes for EUR/USD stablecoin pyments (USDC/EURC)
+ * @notice  Constant-product (x*y=k) pool for a single, fixed pair of tokens. Designed for EUR/USD stablecoin payments (USDC/EURC)
  * @dev The pool works in raw token units, so it doesn't depend on the tokens' decimals. It does not sort the tokens : `token0` and `token1` are the order
  *      the deployer chose. The pool custodies the reserves so it inherits the risks of the tokens.
  */
-contract StableFXPool is ERC20, ReentrancyGuard {
+contract StableFXPool is IStableFXPool, ERC20, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    /// @inheritdoc IStableFXPool
     IERC20 public immutable token0;
+    /// @inheritdoc IStableFXPool
     IERC20 public immutable token1;
 
-    uint256 public reserve0;
-    uint256 public reserve1;
+    uint256 private reserve0;
+    uint256 private reserve1;
 
     uint256 public constant MINIMUM_LIQUIDITY = 1_000;
     uint256 public constant FEE_BPS = 5;
@@ -28,14 +31,14 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     address public constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     /**
-     * @dev Emmited when liquidity is added
+     * @dev Emitted when liquidity is added
      */
     event LiquidityAdded(
         address indexed sender, address indexed to, uint256 amount0, uint256 amount1, uint256 liquidity
     );
 
     /**
-     * @dev Emmited when liquidity is removed
+     * @dev Emitted when liquidity is removed
      */
     event LiquidityRemoved(
         address indexed sender, address indexed to, uint256 amount0, uint256 amount1, uint256 liquidity
@@ -62,7 +65,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     error NotAContract();
 
     /**
-     * @dev Thrown when the transaction is minted after the caller's deadline
+     * @dev Thrown when the transaction is executed after the caller's deadline
      */
     error Expired();
 
@@ -72,14 +75,14 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     error InvalidRecipient();
 
     /**
-     * @dev Thrown when one of the elements to deposit is zero
+     * @dev Thrown when an amount that must be positive is zero
      */
     error ZeroAmount();
 
     /**
-     * @dev Thrown when the amount the pool would take of q token is below the caller's minimum
+     * @dev Thrown when the amount the pool would take of a token is below the caller's minimum
      * @param got Amount the pool would actually take, given the current reserve ratio
-     * @param min Minimum amount the caller require
+     * @param min Minimum amount the caller requires
      */
     error InsufficientAmount(uint256 got, uint256 min);
 
@@ -89,7 +92,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     error InsufficientLiquidityMinted();
 
     /**
-     * @dev Thrown when a deposit would burn no LP tokens to the recipient
+     * @dev Thrown when a withdrawal would return zero of either token
      */
     error InsufficientLiquidityBurned();
 
@@ -129,6 +132,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         token1 = IERC20(token1_);
     }
 
+    /// @inheritdoc IStableFXPool
     function addLiquidity(
         uint256 amount0Desired_,
         uint256 amount1Desired_,
@@ -136,7 +140,7 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         uint256 amount1Min_,
         address to_,
         uint256 deadline_
-    ) external nonReentrant returns (uint256 amount0_, uint256 amount1_, uint256 liquidity_) {
+    ) external override nonReentrant returns (uint256 amount0_, uint256 amount1_, uint256 liquidity_) {
         // forge-lint: disable-next-line(block-timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
@@ -167,13 +171,14 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit LiquidityAdded(msg.sender, to_, amount0_, amount1_, liquidity_);
     }
 
+    /// @inheritdoc IStableFXPool
     function removeLiquidity(
         uint256 liquidity_,
         uint256 amount0Min_,
         uint256 amount1Min_,
         address to_,
         uint256 deadline_
-    ) external nonReentrant returns (uint256 amount0_, uint256 amount1_) {
+    ) external override nonReentrant returns (uint256 amount0_, uint256 amount1_) {
         // forge-lint: disable-next-line(block-timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
@@ -196,12 +201,15 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit LiquidityRemoved(msg.sender, to_, amount0_, amount1_, liquidity_);
     }
 
-    function getAmountOut(address tokenIn_, uint256 amountIn_) external view returns (uint256 amountOut_) {
+    /// @inheritdoc IStableFXPool
+    function getAmountOut(address tokenIn_, uint256 amountIn_) external view override returns (uint256 amountOut_) {
         (amountOut_,) = _quote(tokenIn_, amountIn_);
     }
 
+    /// @inheritdoc IStableFXPool
     function swapExactInput(address tokenIn_, uint256 amountIn_, uint256 amountOutMin_, address to_, uint256 deadline_)
         external
+        override
         nonReentrant
         returns (uint256 amountOut_)
     {
@@ -226,17 +234,19 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit SwapTokens(msg.sender, to_, tokenIn_, amountIn_, amountOut_);
     }
 
-    function getAmountIn(address tokenOut_, uint256 amountOut_) external view returns (uint256 amountIn_) {
+    /// @inheritdoc IStableFXPool
+    function getAmountIn(address tokenOut_, uint256 amountOut_) external view override returns (uint256 amountIn_) {
         (amountIn_,) = _quoteIn(tokenOut_, amountOut_);
     }
 
+    /// @inheritdoc IStableFXPool
     function swapExactOutput(
         address tokenOut_,
         uint256 amountOut_,
         uint256 amountInMax_,
         address to_,
         uint256 deadline_
-    ) external nonReentrant returns (uint256 amountIn_) {
+    ) external override nonReentrant returns (uint256 amountIn_) {
         // forge-lint: disable-next-line(block-timestamp)
         if (deadline_ < block.timestamp) revert Expired();
         if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
@@ -259,7 +269,8 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit SwapTokens(msg.sender, to_, address(tokenIn), amountIn_, amountOut_);
     }
 
-    function getReserves() public view returns (uint256, uint256) {
+    /// @inheritdoc IStableFXPool
+    function getReserves() external view override returns (uint256 reserve0_, uint256 reserve1_) {
         return (reserve0, reserve1);
     }
 
