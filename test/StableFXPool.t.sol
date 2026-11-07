@@ -968,6 +968,200 @@ contract StableFXPoolTest is Test {
         stablePool.getAmountIn(address(token1), amountOut_);
     }
 
+    function test_SwapExactOutput_Token0ForToken1() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+        uint256 token0Before_ = token0.balanceOf(user);
+        uint256 token1Before_ = token1.balanceOf(user);
+
+        vm.prank(user);
+        uint256 amountIn_ = stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, user, block.timestamp);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(amountIn_, 111_166_695);
+        assertEq(reserve0_, 1_111_166_695);
+        assertEq(reserve1_, 900e6);
+        assertEq(token0.balanceOf(user), token0Before_ - amountIn_);
+        assertEq(token1.balanceOf(user), token1Before_ + amountOut_);
+    }
+
+    function test_SwapExactOutput_Token1ForToken0() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountOut_ = 363_471_066;
+        uint256 amountInMax_ = type(uint256).max;
+        uint256 token0Before_ = token0.balanceOf(user);
+        uint256 token1Before_ = token1.balanceOf(user);
+
+        vm.prank(user);
+        uint256 amountIn_ = stablePool.swapExactOutput(address(token0), amountOut_, amountInMax_, user, block.timestamp);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(amountIn_, 100e6);
+        assertEq(reserve0_, 3_636_528_934);
+        assertEq(reserve1_, 1_100e6);
+        assertEq(token0.balanceOf(user), token0Before_ + amountOut_);
+        assertEq(token1.balanceOf(user), token1Before_ - amountIn_);
+    }
+
+    function test_SwapExactOutput_SendsOutputToRecipient() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+        uint256 token0Before_ = token0.balanceOf(user);
+        uint256 token1Before_ = token1.balanceOf(user);
+        address bob = makeAddr("bob");
+
+        vm.prank(user);
+        uint256 amountIn_ = stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, bob, block.timestamp);
+        (uint256 reserve0_, uint256 reserve1_) = stablePool.getReserves();
+
+        assertEq(amountIn_, 111_166_695);
+        assertEq(token0.balanceOf(bob), 0);
+        assertEq(token1.balanceOf(bob), amountOut_);
+        assertEq(token0.balanceOf(user), token0Before_ - amountIn_);
+        assertEq(token1.balanceOf(user), token1Before_);
+        assertEq(reserve0_, 1_111_166_695);
+        assertEq(reserve1_, 900e6);
+        assertEq(reserve0_, token0.balanceOf(address(stablePool)));
+        assertEq(reserve1_, token1.balanceOf(address(stablePool)));
+    }
+
+    function test_SwapExactOutput_InvariantKIncreases() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+        (uint256 reserve0Before_, uint256 reserve1Before_) = stablePool.getReserves();
+        uint256 kBefore_ = reserve0Before_ * reserve1Before_;
+
+        vm.prank(user);
+        uint256 amountIn_ = stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, user, block.timestamp);
+        (uint256 reserve0After_, uint256 reserve1After_) = stablePool.getReserves();
+        uint256 kAfter_ = reserve0After_ * reserve1After_;
+
+        assertEq(amountIn_, 111_166_695);
+        assertEq(kBefore_, 1e18);
+        assertEq(kAfter_, 1_000_050_025_500_000_000);
+        assertGt(kAfter_, kBefore_);
+    }
+
+    function test_SwapExactOutput_EmitsSwapTokens() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+
+        vm.expectEmit(true, true, false, true, address(stablePool));
+        emit StableFXPool.SwapTokens(user, user, address(token0), 111_166_695, amountOut_);
+
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, user, block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_Expired() public {
+        vm.warp(1_000);
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+
+        vm.expectRevert(StableFXPool.Expired.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token0), amountOut_, 0, user, block.timestamp - 1);
+    }
+
+    function test_SwapExactOutput_RevertWhen_InvalidRecipientWithZeroAddress() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+
+        vm.expectRevert(StableFXPool.InvalidRecipient.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token1), amountOut_, 0, address(0), block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_InvalidRecipientWithStableFxPoolAddress() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+
+        vm.expectRevert(StableFXPool.InvalidRecipient.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token1), amountOut_, 0, address(stablePool), block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_ZeroAmountOut() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 0;
+
+        vm.expectRevert(StableFXPool.ZeroAmount.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token0), amountOut_, 0, user, block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_TokenIsNotPoolToken() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+        address randomTokenAddress_ = makeAddr("DAI");
+
+        vm.expectRevert(StableFXPool.InvalidToken.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(randomTokenAddress_, amountOut_, 0, user, block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_PoolHasNoLiquidity() public {
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidity.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token0), amountOut_, amountInMax_, user, block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_AmountOutExceedsReserve() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 1_000e6;
+        uint256 amountInMax_ = type(uint256).max;
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidity.selector);
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token0), amountOut_, amountInMax_, user, block.timestamp);
+    }
+
+    function test_SwapExactOutput_RevertWhen_AboveAmountInMax() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+        uint256 amountInMax_ = type(uint256).max;
+
+        vm.expectRevert(abi.encodeWithSelector(StableFXPool.ExcessiveInputAmount.selector, 111_166_695, 111_166_694));
+        vm.prank(user);
+        stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, user, block.timestamp);
+    }
+
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)

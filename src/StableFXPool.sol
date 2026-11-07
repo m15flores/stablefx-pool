@@ -108,6 +108,8 @@ contract StableFXPool is ERC20, ReentrancyGuard {
      */
     error InsufficientOutputAmount();
 
+    error ExcessiveInputAmount(uint256 required, uint256 max);
+
     /**
      * @notice Creates a pool for the pair (`token0`, `token1`) and its LP token
      * @param token0_ address of the first token of the pair
@@ -222,6 +224,14 @@ contract StableFXPool is ERC20, ReentrancyGuard {
     function getAmountIn(address tokenOut_, uint256 amountOut_) external view returns (uint256 amountIn_) {
         (amountIn_,) = _quoteIn(tokenOut_, amountOut_);
     }
+
+    function swapExactOutput(
+        address tokenOut_,
+        uint256 amountOut_,
+        uint256 amountInMax_,
+        address to_,
+        uint256 deadline_
+    ) external nonReentrant returns (uint256 amountIn_) {}
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
