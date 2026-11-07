@@ -108,6 +108,11 @@ contract StableFXPool is ERC20, ReentrancyGuard {
      */
     error InsufficientOutputAmount();
 
+    /**
+     * @dev Thrown when the input amount required for the requested output exceeds the caller's maximum
+     * @param required Amount the pool would actually take as input, given the current reserve ratio
+     * @param max Maximum input amount the caller is willing to pay
+     */
     error ExcessiveInputAmount(uint256 required, uint256 max);
 
     /**
@@ -231,7 +236,28 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         uint256 amountInMax_,
         address to_,
         uint256 deadline_
-    ) external nonReentrant returns (uint256 amountIn_) {}
+    ) external nonReentrant returns (uint256 amountIn_) {
+        // forge-lint: disable-next-line(block-timestamp)
+        if (deadline_ < block.timestamp) revert Expired();
+        if (to_ == address(0) || to_ == address(this)) revert InvalidRecipient();
+        bool zeroForOne_;
+        (amountIn_, zeroForOne_) = _quoteIn(tokenOut_, amountOut_);
+        if (amountIn_ > amountInMax_) revert ExcessiveInputAmount(amountIn_, amountInMax_);
+
+        if (zeroForOne_) {
+            reserve0 += amountIn_;
+            reserve1 -= amountOut_;
+        } else {
+            reserve0 -= amountOut_;
+            reserve1 += amountIn_;
+        }
+
+        (IERC20 tokenIn, IERC20 tokenOut) = zeroForOne_ ? (token0, token1) : (token1, token0);
+        tokenIn.safeTransferFrom(msg.sender, address(this), amountIn_);
+        tokenOut.safeTransfer(to_, amountOut_);
+
+        emit SwapTokens(msg.sender, to_, address(tokenIn), amountIn_, amountOut_);
+    }
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);

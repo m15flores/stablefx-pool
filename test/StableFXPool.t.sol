@@ -1155,7 +1155,7 @@ contract StableFXPoolTest is Test {
         uint256 amount1_ = 1_000e6;
         _addLiquidity(user, amount0_, amount1_);
         uint256 amountOut_ = 100e6;
-        uint256 amountInMax_ = type(uint256).max;
+        uint256 amountInMax_ = 111_166_694;
 
         vm.expectRevert(abi.encodeWithSelector(StableFXPool.ExcessiveInputAmount.selector, 111_166_695, 111_166_694));
         vm.prank(user);
