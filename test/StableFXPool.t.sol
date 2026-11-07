@@ -879,6 +879,95 @@ contract StableFXPoolTest is Test {
         vm.stopPrank();
     }
 
+    function test_GetAmountIn_MatchesFormula() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+
+        uint256 amountIn_ = stablePool.getAmountIn(address(token1), amountOut_);
+
+        assertEq(amountIn_, 111_166_695);
+    }
+
+    function test_GetAmountIn_IsInverseOfGetAmountOut() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 90_867_766;
+
+        uint256 amountIn_ = stablePool.getAmountIn(address(token1), amountOut_);
+
+        assertEq(amountIn_, 100_000_000);
+        assertEq(stablePool.getAmountOut(address(token0), amountIn_), 90_867_766);
+    }
+
+    function test_GetAmountIn_NonTrivialRatio() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 100e6;
+
+        uint256 amountIn_ = stablePool.getAmountIn(address(token1), amountOut_);
+
+        assertEq(amountIn_, 444_666_778);
+    }
+
+    function test_GetAmountIn_Token1In() public {
+        uint256 amount0_ = 4_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 363_471_066;
+
+        uint256 amountIn_ = stablePool.getAmountIn(address(token0), amountOut_);
+
+        assertEq(amountIn_, 100_000_000);
+    }
+
+    function test_GetAmountIn_RoundsUp() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 1;
+
+        uint256 amountIn_ = stablePool.getAmountIn(address(token1), amountOut_);
+
+        assertEq(amountIn_, 2);
+        assertEq(stablePool.getAmountOut(address(token0), 2), 1);
+    }
+
+    function test_GetAmountIn_RevertWhen_TokenIsNotPoolToken() public {
+        uint256 amountOut_ = 1_000e6;
+        address tokenAddress_ = makeAddr("DAI");
+
+        vm.expectRevert(StableFXPool.InvalidToken.selector);
+        stablePool.getAmountIn(tokenAddress_, amountOut_);
+    }
+
+    function test_GetAmountIn_RevertWhen_ZeroAmountOut() public {
+        uint256 amountOut_ = 0;
+
+        vm.expectRevert(StableFXPool.ZeroAmount.selector);
+        stablePool.getAmountIn(address(token1), amountOut_);
+    }
+
+    function test_GetAmountIn_RevertWhen_PoolHasNoLiquidity() public {
+        uint256 amountOut_ = 1_000e6;
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidity.selector);
+        stablePool.getAmountIn(address(token0), amountOut_);
+    }
+
+    function test_GetAmountIn_RevertWhen_AmountOutExceedsReserve() public {
+        uint256 amount0_ = 1_000e6;
+        uint256 amount1_ = 1_000e6;
+        _addLiquidity(user, amount0_, amount1_);
+        uint256 amountOut_ = 1_000e6;
+
+        vm.expectRevert(StableFXPool.InsufficientLiquidity.selector);
+        stablePool.getAmountIn(address(token1), amountOut_);
+    }
+
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)

@@ -219,6 +219,8 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit SwapTokens(msg.sender, to_, tokenIn_, amountIn_, amountOut_);
     }
 
+    function getAmountIn(address tokenOut_, uint256 amountOut_) external view returns (uint256 amountIn_) {}
+
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
     }
