@@ -219,7 +219,9 @@ contract StableFXPool is ERC20, ReentrancyGuard {
         emit SwapTokens(msg.sender, to_, tokenIn_, amountIn_, amountOut_);
     }
 
-    function getAmountIn(address tokenOut_, uint256 amountOut_) external view returns (uint256 amountIn_) {}
+    function getAmountIn(address tokenOut_, uint256 amountOut_) external view returns (uint256 amountIn_) {
+        (amountIn_,) = _quoteIn(tokenOut_, amountOut_);
+    }
 
     function getReserves() public view returns (uint256, uint256) {
         return (reserve0, reserve1);
@@ -269,5 +271,37 @@ contract StableFXPool is ERC20, ReentrancyGuard {
 
         amountOut_ = _getAmountOut(amountIn_, reserveIn_, reserveOut_);
         zeroForOne_ = tokenIn_ == address(token0);
+    }
+
+    function _getAmountIn(uint256 amountOut_, uint256 reserveIn_, uint256 reserveOut_)
+        private
+        pure
+        returns (uint256 amountIn_)
+    {
+        amountIn_ = reserveIn_ * amountOut_ * BPS / ((reserveOut_ - amountOut_) * (BPS - FEE_BPS)) + 1;
+    }
+
+    function _quoteIn(address tokenOut_, uint256 amountOut_)
+        private
+        view
+        returns (uint256 amountIn_, bool zeroForOne_)
+    {
+        if (amountOut_ == 0) revert ZeroAmount();
+
+        uint256 reserveIn_;
+        uint256 reserveOut_;
+
+        if (tokenOut_ == address(token0)) {
+            (reserveIn_, reserveOut_) = (reserve1, reserve0);
+        } else if (tokenOut_ == address(token1)) {
+            (reserveIn_, reserveOut_) = (reserve0, reserve1);
+        } else {
+            revert InvalidToken();
+        }
+
+        if (reserveIn_ == 0 || reserveOut_ == 0 || amountOut_ >= reserveOut_) revert InsufficientLiquidity();
+
+        amountIn_ = _getAmountIn(amountOut_, reserveIn_, reserveOut_);
+        zeroForOne_ = tokenOut_ == address(token1);
     }
 }
