@@ -1162,6 +1162,61 @@ contract StableFXPoolTest is Test {
         stablePool.swapExactOutput(address(token1), amountOut_, amountInMax_, user, block.timestamp);
     }
 
+    function testFuzz_GetAmountIn_CoversAmountOut(
+        uint256 reserve0_,
+        uint256 reserve1_,
+        uint256 amountOut_,
+        bool zeroForOne_
+    ) public {
+        reserve0_ = bound(reserve0_, 1e6, 1_000_000e6);
+        reserve1_ = bound(reserve1_, 1e6, 1_000_000e6);
+        _addLiquidity(user, reserve0_, reserve1_);
+
+        uint256 reserveOut_ = zeroForOne_ ? reserve1_ : reserve0_;
+        amountOut_ = bound(amountOut_, 1, reserveOut_ - 1);
+        (MockERC20 tokenIn_, MockERC20 tokenOut_) = zeroForOne_ ? (token0, token1) : (token1, token0);
+        uint256 amountIn_ = stablePool.getAmountIn(address(tokenOut_), amountOut_);
+        uint256 amountOutBack_ = stablePool.getAmountOut(address(tokenIn_), amountIn_);
+
+        assertGe(amountOutBack_, amountOut_);
+        assertGt(amountIn_, 0);
+    }
+
+    function testFuzz_SwapExactOutput_KNeverDecreases(
+        uint256 reserve0_,
+        uint256 reserve1_,
+        uint256 amountOut_,
+        bool zeroForOne_
+    ) public {
+        reserve0_ = bound(reserve0_, 1e6, 100_000e6);
+        reserve1_ = bound(reserve1_, 1e6, 100_000e6);
+        _addLiquidity(user, reserve0_, reserve1_);
+
+        uint256 reserveOut_ = zeroForOne_ ? reserve1_ : reserve0_;
+        amountOut_ = bound(amountOut_, 1, reserveOut_ / 2);
+        (MockERC20 tokenIn_, MockERC20 tokenOut_) = zeroForOne_ ? (token0, token1) : (token1, token0);
+
+        (uint256 reserve0Before_, uint256 reserve1Before_) = stablePool.getReserves();
+        uint256 kBefore_ = reserve0Before_ * reserve1Before_;
+        uint256 balanceBefore_ = tokenOut_.balanceOf(user);
+
+        vm.startPrank(user);
+        tokenIn_.approve(address(stablePool), type(uint256).max);
+        uint256 amountIn_ =
+            stablePool.swapExactOutput(address(tokenOut_), amountOut_, type(uint256).max, user, block.timestamp);
+        vm.stopPrank();
+
+        (uint256 reserve0After_, uint256 reserve1After_) = stablePool.getReserves();
+        uint256 kAfter_ = reserve0After_ * reserve1After_;
+        uint256 balanceAfter_ = tokenOut_.balanceOf(user);
+
+        assertGe(kAfter_, kBefore_);
+        assertGt(amountIn_, 0);
+        assertEq(balanceAfter_, balanceBefore_ + amountOut_);
+    }
+
+    function testFuzz_ExactOutputThenExactInput_consistent() public {}
+
     function _addLiquidity(address provider_, uint256 amount0_, uint256 amount1_)
         internal
         returns (uint256 liquidity_)
