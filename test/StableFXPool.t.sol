@@ -5,7 +5,6 @@ pragma solidity 0.8.34;
 import "forge-std/Test.sol";
 import "../src/StableFXPool.sol";
 import "./mocks/MockERC20.sol";
-import "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract StableFXPoolTest is Test {
     StableFXPool stablePool;

@@ -17,7 +17,7 @@ contract Deploy is Script {
         address deployer_ = msg.sender;
 
         vm.startBroadcast();
-        
+
         MockEURC eurc_ = new MockEURC();
         StableFXPool pool_ = new StableFXPool(USDC, address(eurc_));
         eurc_.mint(deployer_, EURC_SEED);
